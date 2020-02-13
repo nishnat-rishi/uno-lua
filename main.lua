@@ -2,6 +2,10 @@ cardsImg = love.graphics.newImage('deck.png')
 cardDimensions = {x = 240, y = 360}
 quadFiller = {cardDimensions.x+2, cardDimensions.y+2, cardsImg:getDimensions()}
 
+suitImg = love.graphics.newImage('suit_array.png')
+suitDimensions = {x = 60, y = 60}
+suitQuadFiller = {suitDimensions.x, suitDimensions.y, suitImg:getDimensions()}
+
 gameState = 'RUNNING'
 
 gX, gY = 0, 0
@@ -319,7 +323,7 @@ function createPlayer(name, properties, hand)
             return self.hand.cards[self.hand.activeCard]
         end,
         draw = function(self)
-            love.graphics.printf('Player: ' .. self.name, math.floor(love.graphics.getWidth()* 4/5), math.floor(love.graphics.getHeight()* 1/3), 60, 'center')
+            love.graphics.printf('Player: ' .. self.name, math.floor(love.graphics.getWidth() * 18/20), math.floor(love.graphics.getHeight() * 2 / 20), 60, 'center')
             self.hand:draw()
         end,
         update = function(self)
@@ -340,13 +344,13 @@ function createDeck()   -- user defined function, to be generalized more
     cards = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'skip', 'reverse', 'draw'}
     for i = 1, #colors do
         for j = 1, #cards do
-            table.insert(deck, createCard({suite = colors[i], type = cards[j]}, {(j-1), (i-1)}))
+            table.insert(deck, createCard({suit = colors[i], type = cards[j]}, {(j-1), (i-1)}))
         end
     end
-    table.insert(deck, createCard({suite = 'wild', type = 'one'}, {13, 0}))
-    table.insert(deck, createCard({suite = 'wild', type = 'one'}, {13, 0}))
-    table.insert(deck, createCard({suite = 'wild', type = 'four'}, {13, 4}))
-    table.insert(deck, createCard({suite = 'wild', type = 'four'}, {13, 4}))
+    table.insert(deck, createCard({suit = 'wild', type = 'one'}, {13, 0}))
+    table.insert(deck, createCard({suit = 'wild', type = 'one'}, {13, 0}))
+    table.insert(deck, createCard({suit = 'wild', type = 'four'}, {13, 4}))
+    table.insert(deck, createCard({suit = 'wild', type = 'four'}, {13, 4}))
 
     return deck
 end
@@ -358,7 +362,7 @@ end
 function cardPoint(card)
     if card.type == 'draw' or card.type == 'skip' or card.type == 'reverse' then
         return 20
-    elseif card.suite == 'wild' then
+    elseif card.suit == 'wild' then
         return 50
     else
         return tonumber(card.type)
@@ -381,18 +385,29 @@ function gameOver(player)
 end
 
 function love.load()
-    game = createGame({suites = {'red', 'blue', 'green', 'yellow'}})
+    interactionTimer = 0
+    interactionSpeed = 4
+    gPresses = 0
+    gPressed = false
+    gX, gY = 0, 0
+    suitQuads = {
+        love.graphics.newQuad(0, 0,  unpack(suitQuadFiller)),
+        love.graphics.newQuad(60, 0, unpack(suitQuadFiller)),
+        love.graphics.newQuad(120, 0, unpack(suitQuadFiller)),
+        love.graphics.newQuad(180, 0, unpack(suitQuadFiller))
+    }
+    game = createGame({suits = {'red', 'blue', 'green', 'yellow'}})
     game.deck = createDeck()
     game.pile = createPile()
     game:setPlayers({
-        createPlayer('A', {suiteChoice = 1}),
-        createPlayer('B', {suiteChoice = 2}),
+        createPlayer('A', {suitChoice = 1}),
+        createPlayer('B', {suitChoice = 2}),
     })
 
     game.pile.canGet = function(self, card)
-        if card.suite == 'wild' then return true end
-        if card.suite == self.top.suite or card.type == self.top.type then return true end
-        if card.suite == self.suite then return true end
+        if card.suit == 'wild' then return true end
+        if card.suit == self.top.suit or card.type == self.top.type then return true end
+        if card.suit == self.suit then return true end
         return false
     end
 
@@ -400,8 +415,8 @@ function love.load()
         if game:currentPlayer().hand.n < 1 then
             gameOver(game:getActivePlayerIndex())
         end
-        if card.suite == 'wild' then
-            self.suite = game.suites[game:currentPlayer().suiteChoice]
+        if card.suit == 'wild' then
+            self.suit = game.suits[game:currentPlayer().suitChoice]
             if card.type == 'four' then
                 game:nextTurn()
                 game:currentPlayer():add(game:randomDraw())
@@ -410,7 +425,7 @@ function love.load()
                 game:currentPlayer():add(game:randomDraw())
             end
         else
-            self.suite = card.suite
+            self.suit = card.suit
         end
         if card.type == 'draw' then
             game:nextTurn()
@@ -428,58 +443,86 @@ function love.load()
     game:preGame()
 
     game.pile:add(game:randomDrawBetween(1, #game.deck-4))
-    game.pile.suite = game.pile.top.suite
+    game.pile.suit = game.pile.top.suit
 end
 
 function love.update(dt)
+    if interactionTimer > 0 then
+        interactionTimer = interactionTimer - interactionSpeed * dt
+        if interactionTimer <= 0 then
+            gPressed = true
+        end
+    end
+    if gPressed == true then
+        if gPresses == 1 and
+        game:currentPlayer():currentCard():collidesWith(gX, gY) and
+        game.pile:canGet(game:currentPlayer():currentCard()) then
+            currentHand = game:currentPlayer().hand
+            game.pile:add(currentHand:remove(currentHand.activeCard))
+        elseif gPresses == 2 then
+            game:currentPlayer():add(game:randomDraw())
+        elseif gPresses == 3 then
+            game:currentPlayer().suitChoice = (game:currentPlayer().suitChoice) % 4 + 1
+        elseif gPresses == 4 then
+            game:reshufflePileAsDeckExcept(1)
+        end
+        gPressed = false
+    end
     game:update()
 end
 
 function love.draw()
-    if gameState == 'OVER' then
-        love.graphics.printf(gameOverMessage, love.graphics.getWidth()/2, 40, 60, 'center')
-    end
+    love.graphics.draw(suitImg, suitQuads[game:currentPlayer().suitChoice], love.graphics.getWidth() / 20, love.graphics.getHeight() * 2 / 20)
     game:draw()
+    if gameState == 'OVER' then
+        love.graphics.printf(gameOverMessage, love.graphics.getWidth() * 3/4, love.graphics.getHeight() * 2 / 20, 60, 'center')
+    end
     -- love.graphics.print('mousemoved x, y: (' .. gX .. ', ' .. gY .. ')', 300, 120)
-    -- love.graphics.print(game.suites[game:currentPlayer().suiteChoice], 300, 80)
+    -- love.graphics.print(game.suits[game:currentPlayer().suitChoice], 300, 80)
     -- love.graphics.print('pile.top.type: ' .. pile.top.type, 300, 60)
-    -- love.graphics.print('pile.top.suite: ' .. pile.top.suite, 300, 40)
-    -- love.graphics.print('pile.suite: ' .. pile.suite, 300, 100)
+    -- love.graphics.print('pile.top.suit: ' .. pile.top.suit, 300, 40)
+    -- love.graphics.print('pile.suit: ' .. pile.suit, 300, 100)
     -- love.graphics.print('mouse x, y: (' .. love.mouse.getX() .. ', ' .. love.mouse.getY() .. ')', 300, 20)
 end
 
 function love.mousepressed(x, y, button, istouch, presses)
     if gameState ~= 'OVER' then
-        currentHand = game:currentPlayer().hand
-        if button == 1 and presses == 1 and
-        game:currentPlayer():currentCard():collidesWith(x, y) and
-        game.pile:canGet(game:currentPlayer():currentCard()) then
-            game.pile:add(currentHand:remove(currentHand.activeCard))
-        elseif button == 2 then
-            game:currentPlayer():add(game:randomDraw())
-        elseif presses == 2 then
-            game:reshufflePileAsDeckExcept(1)
+        if not istouch then
+            currentHand = game:currentPlayer().hand
+            if button == 1 and presses == 1 and
+            game:currentPlayer():currentCard():collidesWith(x, y) and
+            game.pile:canGet(game:currentPlayer():currentCard()) then
+                game.pile:add(currentHand:remove(currentHand.activeCard))
+            elseif button == 2 then
+                game:currentPlayer():add(game:randomDraw())
+            elseif presses == 2 then
+                game:reshufflePileAsDeckExcept(1)
+            end
+        else
+            gX, gY = x, y
+            interactionTimer = 1
+            gPresses = presses
         end
     end
 end
 
 function love.wheelmoved(x, y)
     if y == 1 then
-        game:currentPlayer().suiteChoice = (game:currentPlayer().suiteChoice)%#game.suites + 1
+        game:currentPlayer().suitChoice = (game:currentPlayer().suitChoice)%#game.suits + 1
     elseif y == -1 then
-        game:currentPlayer().suiteChoice = (game:currentPlayer().suiteChoice-2)%#game.suites + 1
+        game:currentPlayer().suitChoice = (game:currentPlayer().suitChoice-2)%#game.suits + 1
     end
 end
 
 function love.keypressed(key)
     if key == 'r' then
-        game:currentPlayer().suiteChoice = 1
+        game:currentPlayer().suitChoice = 1
     elseif key == 'b' then
-        game:currentPlayer().suiteChoice = 2
+        game:currentPlayer().suitChoice = 2
     elseif key == 'g' then
-        game:currentPlayer().suiteChoice = 3
+        game:currentPlayer().suitChoice = 3
     elseif key == 'y' then
-        game:currentPlayer().suiteChoice = 4
+        game:currentPlayer().suitChoice = 4
     elseif key == 'd' then
         game:currentPlayer():add(game:randomDraw())
     elseif key == 'w' then
